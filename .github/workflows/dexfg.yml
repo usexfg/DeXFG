@@ -31,7 +31,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: nightly-2024-06-01
+          toolchain: nightly-2025-06-01
           components: rustfmt, clippy
 
       - name: Cache Rust
@@ -45,7 +45,7 @@ jobs:
 
       - name: Build mm2_xfg
         run: |
-          rustup override set nightly-2024-06-01
+          rustup override set nightly-2025-06-01
           cargo build --release -p mm2_main
           cp target/release/mm2_main mm2_xfg
 
@@ -154,7 +154,7 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@v1
         with:
-          toolchain: nightly-2024-06-01
+          toolchain: nightly-2025-06-01
           components: rustfmt, clippy
 
       - name: Cache Rust
@@ -168,5 +168,5 @@ jobs:
 
       - name: Run fuego_adaptor tests
         run: |
-          rustup override set nightly-2024-06-01
+          rustup override set nightly-2025-06-01
           cargo test -p fuego_adaptor
