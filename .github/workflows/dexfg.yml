@@ -49,8 +49,8 @@ jobs:
       - name: Build mm2_xfg
         run: |
           rustup override set nightly-2025-06-01
-          cargo build --release -p mm2_main
-          cp target/release/mm2_main mm2_xfg
+          cargo build --release -p mm2_bin_lib
+          cp target/release/kdf mm2_xfg
 
       - uses: actions/upload-artifact@v4
         with:
