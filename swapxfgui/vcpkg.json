@@ -33,5 +33,11 @@
     "date",
     "cpprestsdk",
     "taskflow"
+  ],
+  "overrides": [
+    {
+      "name": "entt",
+      "version": "3.13.2"
+    }
   ]
 }
