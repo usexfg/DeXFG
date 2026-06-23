@@ -55,15 +55,16 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: mm2_xfg-linux-x64
-          path: |
-            mm2_xfg
+          path: mm2_xfg
 
   swapxfgui:
     name: Build swapxfgui
     needs: mm2
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-20.04
     env:
-      VCPKG_ROOT: ${{ github.workspace }}/swapxfgui/ci_tools_atomic_dex/vcpkg-repo
+      DEX_PROJECT_NAME: "deXFG"
+      DEX_VERSION: "0.7.0"
+      QT_VERSION: "5.15.2"
       VCPKG_DEFAULT_TRIPLET: x64-linux
     steps:
       - uses: actions/checkout@v4
@@ -75,81 +76,75 @@ jobs:
           name: mm2_xfg-linux-x64
           path: /tmp/mm2_artifacts
 
-      - name: Cache vcpkg
-        uses: actions/cache@v4
+      - name: Install Nim
+        run: |
+          curl https://nim-lang.org/choosenim/init.sh -sSf | bash -s -- -y
+          echo "$HOME/.nimble/bin" >> $GITHUB_PATH
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v3
         with:
-          path: |
-            ~/.cache/vcpkg
-            swapxfgui/ci_tools_atomic_dex/vcpkg-repo/installed
-            swapxfgui/ci_tools_atomic_dex/vcpkg-repo/downloads
-            swapxfgui/ci_tools_atomic_dex/vcpkg-repo/packages
-          key: vcpkg-${{ runner.os }}-${{ hashFiles('swapxfgui/vcpkg.json') }}
+          version: ${{ env.QT_VERSION }}
+          host: linux
+          target: desktop
+          dir: ${{ github.workspace }}
+          modules: 'qtcharts debug_info'
+          cache: true
 
-      - name: Install Qt5 + system deps
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            qtbase5-dev qtwebengine5-dev qtdeclarative5-dev \
-            libqt5svg5-dev libqt5charts5-dev \
-            qt5-qmake qtwebengine5-dev-tools \
-            qttools5-dev qttools5-dev-tools \
-            libgl1-mesa-dev libxkbcommon-dev \
-            qtquickcontrols2-5-dev \
-            autoconf autoconf-archive automake libtool
+      - name: Install deps
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: sudo ./swapxfgui/ci_tools_atomic_dex/ci_scripts/linux_script.sh
 
-      - name: Bootstrap vcpkg
-        working-directory: swapxfgui/ci_tools_atomic_dex/vcpkg-repo
+      - name: Set vcpkg env
         run: |
-          ./bootstrap-vcpkg.sh -disableMetrics
+          echo "VCPKG_ROOT=${{ github.workspace }}/swapxfgui/ci_tools_atomic_dex/vcpkg-repo" >> $GITHUB_ENV
 
-      - name: Install vcpkg deps
-        working-directory: swapxfgui
-        run: |
-          ./ci_tools_atomic_dex/vcpkg-repo/vcpkg install --triplet x64-linux \
-            --overlay-ports=ci_tools_atomic_dex/vcpkg-custom-ports/ports
+      - name: Build ci_tools
+        working-directory: swapxfgui/ci_tools_atomic_dex
+        run: nimble build -y
 
       - name: Prepare mm2 binary
         run: |
-          mkdir -p /tmp/mm2_prebuilt
-          cp /tmp/mm2_artifacts/mm2_xfg /tmp/mm2_prebuilt/mm2
-          cd /tmp/mm2_prebuilt && zip -r mm2.zip mm2
-          ls -la /tmp/mm2_prebuilt/mm2.zip
+          cp /tmp/mm2_artifacts/mm2_xfg /tmp/mm2_xfg_bin
+          chmod +x /tmp/mm2_xfg_bin
 
-      - name: Configure cmake
-        working-directory: swapxfgui
+      - name: Build swapxfgui
+        working-directory: swapxfgui/ci_tools_atomic_dex
+        env:
+          QT_INSTALL_CMAKE_PATH: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/gcc_64/lib/cmake
+          QT_ROOT: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}
+          CXX: clang++-12
+          CC: clang-12
         run: |
-          cmake -B build -G Ninja \
-            -DCMAKE_BUILD_TYPE=Release \
-            -DCMAKE_TOOLCHAIN_FILE="${VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake" \
-            -DCMAKE_PREFIX_PATH="/usr/lib/x86_64-linux-gnu/cmake/Qt5" \
-            -DVCPKG_OVERLAY_PORTS="${GITHUB_WORKSPACE}/swapxfgui/ci_tools_atomic_dex/vcpkg-custom-ports/ports" \
-            -DMM2_URL="file:///tmp/mm2_prebuilt/mm2.zip"
+          export PATH=$HOME/.nimble/bin:$PATH
+          ./ci_tools_atomic_dex build Release
 
-      - name: Build
-        working-directory: swapxfgui
+      - name: Override mm2 binary
         run: |
-          cmake --build build -j$(nproc)
-          # Override the pre-built mm2 with our custom build
-          cp /tmp/mm2_artifacts/mm2_xfg build/bin/assets/tools/mm2/mm2_xfg
-          chmod +x build/bin/assets/tools/mm2/mm2_xfg
+          find swapxfgui/ci_tools_atomic_dex/build-Release -name "atomic_qt" -o -name "deXFG" -o -name "swapxfg" 2>/dev/null
+          find swapxfgui/ci_tools_atomic_dex/build-Release -path "*/tools/mm2/*" 2>/dev/null
+          for f in $(find swapxfgui/ci_tools_atomic_dex/build-Release -path "*/tools/mm2/mm2*" -type f 2>/dev/null); do
+            cp /tmp/mm2_xfg_bin "$f"
+            chmod +x "$f"
+          done
 
-      - name: Package artifacts
+      - name: Bundle
+        working-directory: swapxfgui/ci_tools_atomic_dex
+        env:
+          QT_INSTALL_CMAKE_PATH: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}/gcc_64/lib/cmake
+          QT_ROOT: ${{ github.workspace }}/Qt/${{ env.QT_VERSION }}
+          CXX: clang++-12
+          CC: clang-12
         run: |
-          mkdir -p release/swapxfg
-          cp -r swapxfgui/build/bin/* release/swapxfg/ 2>/dev/null || true
-          # If build output is elsewhere
-          find swapxfgui/build -name swapxfg -type f -exec cp {} release/swapxfg/ \; 2>/dev/null || true
-          find swapxfgui/build -name swapxfg -type f 2>/dev/null
-          ls -la release/swapxfg/ 2>/dev/null || echo "No binaries yet"
-          # For now just package what we have
-          tar -czf swapxfg-linux-x64.tar.gz -C swapxfgui/build . 2>/dev/null || true
-          ls -la *.tar.gz 2>/dev/null || echo "No package"
+          export PATH=$HOME/.nimble/bin:$PATH
+          ./ci_tools_atomic_dex bundle Release
 
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: swapxfgui-linux-x64
-          path: swapxfg-linux-x64.tar.gz
+          path: swapxfgui/ci_tools_atomic_dex/bundle-Release/
 
   fuego_adaptor_tests:
     name: fuego_adaptor tests
